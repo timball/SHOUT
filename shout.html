@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<title>SHOUT</title>
+<style>
+  :root { --amber:#ffb454; --bg:#0c0d10; --panel:#181a20; --line:#2a2e37; --text:#ece8df; --muted:#8a8577; }
+  * { box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; overscroll-behavior:none; }
+  body { background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif; }
+
+  #setup { position:fixed; inset:0; display:flex; flex-direction:column; gap:16px;
+           padding:max(20px,env(safe-area-inset-top)) 22px 22px; justify-content:center; max-width:560px; margin:0 auto; }
+  #setup h1 { margin:0; font-size:32px; font-weight:800; letter-spacing:-.02em; }
+  #setup h1 .amber { color:var(--amber); }
+  #setup .sub { margin:-10px 0 2px; color:var(--muted); font-size:13px; }
+
+  .field { position:relative; }
+  #msg { width:100%; background:var(--panel); color:var(--text); border:1px solid var(--line);
+         border-radius:12px; font-size:22px; font-weight:600; padding:16px 16px 26px; line-height:1.3;
+         resize:none; min-height:64px; max-height:170px; overflow-y:auto; -webkit-user-select:text; user-select:text; }
+  #msg:focus { outline:none; border-color:var(--amber); }
+  .counter { position:absolute; right:12px; bottom:9px; font-size:12px; font-weight:600; color:var(--muted); pointer-events:none; }
+  .counter.warn { color:var(--amber); }
+
+  .group { display:flex; flex-direction:column; gap:8px; }
+  .cap { font-size:11px; font-weight:700; letter-spacing:.13em; color:var(--muted); padding-left:4px; }
+  .morph { min-height:88px; justify-content:center; }
+
+  /* iOS-style segmented control */
+  .segbar { display:flex; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:4px; gap:4px; }
+  .segbar .opt { flex:1; text-align:center; padding:12px 4px; border-radius:9px; font-size:13px; font-weight:700;
+              color:var(--muted); cursor:pointer; white-space:nowrap; transition:background .12s,color .12s; }
+  .segbar .opt.sel { background:var(--amber); color:#0c0d10; }
+
+  /* pill buttons (COLOR + INVERT) */
+  .row { display:flex; gap:10px; }
+  .ctl { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text);
+         border-radius:12px; padding:13px 8px; font-size:14px; font-weight:700; text-align:center; cursor:pointer; line-height:1.2; }
+  .ctl .k { display:block; font-size:10px; font-weight:600; letter-spacing:.12em; color:var(--muted); margin-bottom:5px; }
+  .ctl .sw { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-1px; margin-right:6px; border:1px solid rgba(255,255,255,.25); }
+
+  #go { background:var(--amber); color:#0c0d10; border:none; border-radius:14px; font-size:26px;
+        font-weight:800; padding:20px; cursor:pointer; letter-spacing:.02em; }
+  #go:active { filter:brightness(.92); } #go:disabled { opacity:.4; }
+  .hint { color:var(--muted); font-size:12px; text-align:center; line-height:1.5; }
+
+  #display { position:fixed; inset:0; width:100vw; height:100vh; height:100dvh;
+             overflow:hidden; display:none; align-items:center; justify-content:flex-start;
+             touch-action:none; background:#000; color:#fff; }
+  #backdrop { position:absolute; inset:0; z-index:0; background:#000; }
+  #track { position:relative; z-index:1; white-space:nowrap; line-height:1; font-weight:900;
+           will-change:transform; letter-spacing:-.01em; }
+  #track .seg { display:inline-block; }
+  #speed { position:absolute; top:12px; left:50%; transform:translateX(-50%);
+           background:rgba(0,0,0,.5); color:#fff; padding:7px 14px; border-radius:20px; font-size:13px;
+           font-weight:700; letter-spacing:.15em; opacity:0; transition:opacity .25s; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <h1>SHOUT<span class="amber">.</span></h1>
+  <p class="sub">Type a message, hit GO, wave your phone. Works in any orientation.</p>
+
+  <div class="field">
+    <textarea id="msg" rows="1" placeholder="Type your message…" autocomplete="off" autocapitalize="sentences"></textarea>
+    <div class="counter" id="counter">0</div>
+  </div>
+
+  <div class="group">
+    <div class="cap">ATTENTION</div>
+    <div class="segbar" id="segAttn"></div>
+  </div>
+
+  <div class="group morph" id="morph">
+    <div id="morphColor">
+      <div class="cap">COLOR</div>
+      <div class="row">
+        <div class="ctl" id="cPal"><span class="k">PALETTE</span><span id="palLabel"></span></div>
+        <div class="ctl" id="cInv"><span class="k">INVERT</span><span id="invLabel">no</span></div>
+      </div>
+    </div>
+    <div id="morphTheme">
+      <div class="cap">THEME</div>
+      <div class="segbar" id="segTheme"></div>
+    </div>
+  </div>
+
+  <button id="go" disabled>GO</button>
+  <p class="hint">On the sign: <b>drag up/down</b> = speed · <b>tap</b> = back here.<br>
+     iPhone fullscreen: Share → Add to Home Screen.</p>
+</div>
+
+<div id="display">
+  <div id="backdrop"></div>
+  <div id="track"></div>
+  <div id="speed"></div>
+</div>
+
+<script>
+/* ======================================================================
+   CONFIG — tune everything here
+   ====================================================================== */
+const CONFIG = {
+  // --- scroll ---
+  defaultSpeed: 800,     // px/sec at start (your happy place; overridden by saved setting)
+  minSpeed:     90,
+  maxSpeed:     4500,
+  dragDivisor:  160,     // px of vertical drag to double/halve speed (smaller = touchier)
+
+  // --- letters ---
+  fontScale:    0.86,    // fraction of screen HEIGHT the text fills (any orientation)
+  textOutline:  true,    // thick black outline so text stays crisp over any warp/pulse
+
+  // --- message box ---
+  softLimit:    60,      // counter turns amber past this many chars (advisory, never blocks)
+
+  // --- WARP (hypnotoad): swirling gradient behind the text ---
+  warpSpeed:      1.0,   // 0.4 = lava-lamp, 1.0 = medium swirl, 2.5 = max hypnosis
+  warpHueText:    true,  // rainbow theme only: also shift the TEXT hue (full psychedelic)
+  warpSaturation: 85,
+  warpLightness:  50,
+
+  // --- LUMINANCE pulse: whole field swings bright<->dark (best peripheral grab) ---
+  lumSpeed:  0.7,        // pulses per second (0.7 = gentle; higher = more urgent)
+  lumSharp:  2,          // 1 = smooth sine, higher = sharper on/off (max ~8)
+  lumMin:    6,          // % lightness at the dark end
+  lumMax:    92,         // % lightness at the bright end
+
+  // --- THEMES: hue family for WARP + LUMINANCE.
+  //     Eye peaks ~555nm (green) in bright light, ~507nm (cyan) in the dark (Purkinje).
+  //     green -> best daylight,  cool -> best dark venue. ---
+  themes: {
+    rainbow: { label:"rainbow", hueBase:0,   hueSpan:360 },
+    cool:    { label:"cool",    hueBase:195, hueSpan:70  },
+    warm:    { label:"warm",    hueBase:25,  hueSpan:70  },
+    green:   { label:"green",   hueBase:120, hueSpan:44  },
+  },
+  themeOrder: ["rainbow","cool","warm","green"],
+
+  // --- palettes for plain scroll (ATTENTION=off). INVERT swaps bg/fg. ---
+  palettes: [
+    { name:"Mono",      bg:"#000000", fg:"#ffffff" },
+    { name:"Amber",     bg:"#0a0a08", fg:"#ffb454" },
+    { name:"Hi-Vis",    bg:"#ffe100", fg:"#000000" },
+    { name:"Cyan",      bg:"#00121a", fg:"#37e6ff" },
+    { name:"Paper",     bg:"#ffffff", fg:"#000000" },
+    { name:"Red Alert", bg:"#b30011", fg:"#ffffff" },
+  ],
+
+  // --- ATTENTION modes ---
+  attnModes:  ["off","warp","luminance"],
+  attnLabels: { off:"off", warp:"warp", luminance:"luminance" },
+
+  storageKey: "shout.settings.v2",
+};
+/* ====================================================================== */
+
+const $ = (id) => document.getElementById(id);
+const setup = $("setup"), display = $("display"), track = $("track"), backdrop = $("backdrop"),
+      speedEl = $("speed"), msg = $("msg"), go = $("go"), counter = $("counter"),
+      segAttn = $("segAttn"), segTheme = $("segTheme"),
+      morphColor = $("morphColor"), morphTheme = $("morphTheme"),
+      cPal = $("cPal"), cInv = $("cInv");
+
+let palIdx = 0, invert = false, attnIdx = 0, themeIdx = 0;
+
+// ---- persistence (no-ops safely in sandboxed previews) ----
+let savedSpeed = null;
+try {
+  const s = JSON.parse(localStorage.getItem(CONFIG.storageKey) || "{}");
+  if (Number.isInteger(s.palIdx)   && s.palIdx   < CONFIG.palettes.length)   palIdx   = s.palIdx;
+  if (Number.isInteger(s.attnIdx)  && s.attnIdx  < CONFIG.attnModes.length)  attnIdx  = s.attnIdx;
+  if (Number.isInteger(s.themeIdx) && s.themeIdx < CONFIG.themeOrder.length) themeIdx = s.themeIdx;
+  if (typeof s.invert === "boolean") invert = s.invert;
+  if (typeof s.speed  === "number")  savedSpeed = s.speed;
+  if (typeof s.msg    === "string")  msg.value = s.msg;
+} catch (e) {}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(CONFIG.storageKey, JSON.stringify({
+      palIdx, invert, attnIdx, themeIdx, speed: Math.round(speed), msg: msg.value,
+    }));
+  } catch (e) {}
+}
+
+const theme = () => CONFIG.themes[CONFIG.themeOrder[themeIdx]];
+const mod = (n, m) => ((n % m) + m) % m;
+
+function palColors() {
+  const p = CONFIG.palettes[palIdx];
+  return invert ? { bg:p.fg, fg:p.bg } : { bg:p.bg, fg:p.fg };
+}
+function paint(bg, fg) { backdrop.style.background = bg; if (fg) display.style.color = fg; }
+
+// ---- build segmented controls ----
+function buildSeg(el, labels, getIdx, onPick) {
+  el.innerHTML = "";
+  labels.forEach((lab, i) => {
+    const o = document.createElement("span");
+    o.className = "opt" + (i === getIdx() ? " sel" : "");
+    o.textContent = lab;
+    o.addEventListener("click", () => { onPick(i); renderSeg(el, getIdx); });
+    el.appendChild(o);
+  });
+}
+function renderSeg(el, getIdx) {
+  [...el.children].forEach((o, i) => o.classList.toggle("sel", i === getIdx()));
+}
+
+function updateMorph() {
+  const off = CONFIG.attnModes[attnIdx] === "off";
+  morphColor.style.display = off ? "block" : "none";
+  morphTheme.style.display = off ? "none" : "block";
+}
+
+function refreshColorPill() {
+  const p = CONFIG.palettes[palIdx], c = palColors();
+  $("palLabel").innerHTML   = `<span class="sw" style="background:${c.fg}"></span>${p.name}`;
+  $("invLabel").textContent = invert ? "yes" : "no";
+}
+
+// ATTENTION segmented
+buildSeg(segAttn, CONFIG.attnModes.map(m => CONFIG.attnLabels[m]), () => attnIdx, (i) => {
+  attnIdx = i; updateMorph(); saveSettings();
+});
+// THEME segmented
+buildSeg(segTheme, CONFIG.themeOrder.map(t => CONFIG.themes[t].label), () => themeIdx, (i) => {
+  themeIdx = i; saveSettings();
+});
+// COLOR + INVERT pills
+cPal.addEventListener("click", () => { palIdx = (palIdx + 1) % CONFIG.palettes.length; refreshColorPill(); saveSettings(); });
+cInv.addEventListener("click", () => { invert = !invert; refreshColorPill(); saveSettings(); });
+
+// ---- message box: auto-grow + soft counter ----
+function autosize() {
+  msg.style.height = "auto";
+  msg.style.height = Math.min(msg.scrollHeight, 170) + "px";
+}
+function updateCounter() {
+  const n = msg.value.trim().length;
+  counter.textContent = n;
+  counter.classList.toggle("warn", n > CONFIG.softLimit);
+}
+msg.addEventListener("input", () => { autosize(); updateCounter(); go.disabled = msg.value.trim() === ""; saveSettings(); });
+
+// ---- animation state ----
+let running = false, raf = null, lastT = 0, x = 0, unitW = 0, vw = 0;
+let mode = "off", speed = savedSpeed || CONFIG.defaultSpeed, message = "", wakeLock = null;
+
+const seg = (text) => { const s = document.createElement("span"); s.className = "seg"; s.textContent = text; return s; };
+
+function buildTrack() {
+  vw = display.clientWidth;
+  track.style.fontSize = (CONFIG.fontScale * 100) + "dvh";
+  const gap = "\u00A0\u00A0\u00A0\u00A0";
+  track.innerHTML = "";
+  const probe = seg(message + gap); track.appendChild(probe);
+  const w = probe.offsetWidth;
+  const reps = Math.max(1, Math.ceil(vw / w) + 1);
+  unitW = w * reps;
+  track.innerHTML = "";
+  track.append(seg((message + gap).repeat(reps)), seg((message + gap).repeat(reps)));
+}
+
+function themedHue(p, k) {
+  const th = theme();
+  if (th.hueSpan >= 360) return mod(p * 60 + k * 90, 360);
+  return mod(th.hueBase - th.hueSpan / 2 + mod(p * 30 + k * (th.hueSpan / 4), th.hueSpan), 360);
+}
+
+function warp(t) {
+  const s = CONFIG.warpSaturation, l = CONFIG.warpLightness;
+  const p = (t / 1000) * CONFIG.warpSpeed;
+  const ang = mod(p * 90, 360);
+  const cx = 50 + 30 * Math.sin(p * 1.3), cy = 50 + 30 * Math.cos(p * 1.1);
+  const H = (k) => `hsl(${themedHue(p, k)} ${s}% ${l}%)`;
+  backdrop.style.background =
+    `radial-gradient(circle at ${cx}% ${cy}%, ${H(0)}, transparent 60%),` +
+    `conic-gradient(from ${ang}deg at 50% 50%, ${H(0)}, ${H(1)}, ${H(2)}, ${H(3)}, ${H(0)})`;
+  if (CONFIG.warpHueText && theme().hueSpan >= 360) display.style.color = `hsl(${themedHue(p, 2)} ${s}% 55%)`;
+  else display.style.color = "#fff";
+}
+
+function contrastCurve(b, k) {
+  if (k <= 1) return b;
+  const f = (z) => 1 / (1 + Math.exp(-k * (z - 0.5)));
+  return (f(b) - f(0)) / (f(1) - f(0));
+}
+function luminance(t) {
+  const th = theme();
+  const p = (t / 1000) * CONFIG.lumSpeed;
+  const b = contrastCurve(Math.sin(p * Math.PI * 2) * 0.5 + 0.5, CONFIG.lumSharp);
+  const light = CONFIG.lumMin + b * (CONFIG.lumMax - CONFIG.lumMin);
+  const hue = th.hueSpan >= 360 ? 0 : th.hueBase;
+  const sat = th.hueSpan >= 360 ? 0 : CONFIG.warpSaturation;
+  backdrop.style.background = `hsl(${hue} ${sat}% ${light}%)`;
+  display.style.color = "#fff";
+}
+
+function loop(t) {
+  if (!running) return;
+  const dt = Math.min((t - lastT) / 1000, 0.05); lastT = t;
+  if (mode === "warp") warp(t);
+  else if (mode === "luminance") luminance(t);
+  x -= speed * dt;
+  if (x <= -unitW) x += unitW;
+  track.style.transform = `translateX(${x}px)`;
+  raf = requestAnimationFrame(loop);
+}
+
+async function requestWakeLock() {
+  try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+
+function start() {
+  message = msg.value.trim().replace(/\s+/g, " ");   // collapse newlines/spaces to one scrolling line
+  if (!message) return;
+  mode = CONFIG.attnModes[attnIdx];
+
+  const c = palColors(); paint(c.bg, c.fg);
+  try { (display.requestFullscreen || display.webkitRequestFullscreen || (()=>{})).call(display); } catch (e) {}
+  requestWakeLock();
+  saveSettings();
+
+  // Outline via a full ring of text-shadows only. NOT -webkit-text-stroke:
+  // the stroke traces internal glyph contours and leaves phantom seams inside
+  // heavy-weight a/e/k/y. text-shadow outlines the silhouette cleanly instead.
+  const outline = CONFIG.textOutline && mode !== "off";
+  const ring = [
+    "3px 0 0 #000","-3px 0 0 #000","0 3px 0 #000","0 -3px 0 #000",
+    "2px 2px 0 #000","-2px -2px 0 #000","2px -2px 0 #000","-2px 2px 0 #000",
+    "0 0 5px #000",
+  ].join(",");
+  track.style.textShadow = outline ? ring : "";
+  track.style.webkitTextStroke = "";
+
+  setup.style.display = "none"; display.style.display = "flex";
+  buildTrack(); x = 0;
+  running = true; lastT = performance.now();
+  raf = requestAnimationFrame(loop);
+}
+
+function stop() {
+  running = false; if (raf) cancelAnimationFrame(raf);
+  display.style.display = "none"; setup.style.display = "flex";
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+  try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
+}
+
+document.addEventListener("visibilitychange", () => { if (running && document.visibilityState === "visible") requestWakeLock(); });
+window.addEventListener("resize", () => { if (running) buildTrack(); });
+
+go.addEventListener("click", start);
+
+// ---- gestures: vertical drag = speed, quick tap = back ----
+let downX = 0, downY = 0, downT = 0, startSpeed = 0, moved = false, speedTimer = null;
+const THRESH = 14;
+display.addEventListener("pointerdown", (e) => {
+  downX = e.clientX; downY = e.clientY; downT = performance.now(); startSpeed = speed; moved = false;
+  display.setPointerCapture(e.pointerId);
+});
+display.addEventListener("pointermove", (e) => {
+  if (downT === 0) return;
+  const dy = downY - e.clientY, dx = e.clientX - downX;
+  if (!moved && Math.hypot(dx, dy) > THRESH) moved = true;
+  if (moved) {
+    speed = Math.min(CONFIG.maxSpeed, Math.max(CONFIG.minSpeed, startSpeed * Math.pow(2, dy / CONFIG.dragDivisor)));
+    const pct = Math.round((speed - CONFIG.minSpeed) / (CONFIG.maxSpeed - CONFIG.minSpeed) * 100);
+    speedEl.textContent = "SPEED " + pct + "%"; speedEl.style.opacity = 1;
+  }
+});
+display.addEventListener("pointerup", (e) => {
+  const quick = performance.now() - downT < 500; downT = 0;
+  try { display.releasePointerCapture(e.pointerId); } catch (_) {}
+  if (!moved && quick) { stop(); return; }
+  saveSettings();
+  clearTimeout(speedTimer); speedTimer = setTimeout(() => speedEl.style.opacity = 0, 700);
+});
+
+// ---- init ----
+updateMorph(); refreshColorPill(); autosize(); updateCounter();
+go.disabled = msg.value.trim() === "";
+</script>
+</body>
+</html>
