@@ -2,7 +2,9 @@
 
 Turn a phone into a giant scrolling sign to get a stranger's attention in a loud
 or dark venue. Type a message, hit GO, wave the phone. One self-contained
-`shout.html` — no build, no dependencies, no network, works offline.
+HTML file — no build, no dependencies, no network, works offline.
+
+**Live:** https://timball.github.io/SHOUT/ — open on a phone and Add to Home Screen.
 
 ## Use
 
@@ -66,8 +68,12 @@ the room" grabber — peripheral vision locks onto brightness change, not color.
 
 ## Deploy
 
-- **Served (any host):** drop `shout.html` in a web root behind https. (This one
-  lives behind Caddy at `/shout/`.)
+- **GitHub Pages:** served from the repo root at
+  https://timball.github.io/SHOUT/ (Settings → Pages → deploy from `main`, root).
+  The entry file is `index.html` so the bare URL works. HTTPS is automatic, which
+  the Wake Lock and Fullscreen APIs require.
+- **Self-hosted (any host):** drop the HTML in a web root behind https. (Also
+  served from a home Caddy instance.)
 - **iPhone fullscreen:** open in Safari → Share → **Add to Home Screen**, then
   launch from the icon. The `apple-mobile-web-app-capable` meta makes it run
   chromeless. (iOS Safari won't honor the Fullscreen API on non-video elements, so
